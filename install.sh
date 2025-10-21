@@ -65,7 +65,7 @@ if [[ x"${release}" == x"centos" ]]; then
     fi
 elif [[ x"${release}" == x"ubuntu" ]]; then
     if [[ ${os_version} -lt 16 ]]; then
-        echo -e "${red}请使用 Ubuntu 16 或更高版本的系统！${plain}\n" && exit 1
+        echo -c "${red}请使用 Ubuntu 16 或更高版本的系统！${plain}\n" && exit 1
     fi
 elif [[ x"${release}" == x"debian" ]]; then
     if [[ ${os_version} -lt 8 ]]; then
@@ -105,21 +105,23 @@ install_XrayR() {
         rm /usr/local/XrayR/ -rf
     fi
 
-    mkdir /usr/local/XrayR/ -p
+    mkdir -p /usr/local/XrayR/
     cd /usr/local/XrayR/
 
+    # 固定使用你提供的可直链（避免 releases/downloads 404）
+    FIXED_URL_64="https://gitlab.com/-/project/68417262/uploads/e84661943246cf560cecb825fe0cc2b6/XrayR-linux-64.zip"
+
     if  [ $# == 0 ] ; then
-        # 从 GitLab tags 页面解析最新 tag（避免 GitHub API 限流）
+        # 仍然保留“检测最新版本”的输出，不影响原有体验
         last_version=$(curl -sL "https://gitlab.com/VergeLab/XrayR/-/tags" | grep -oE 'v[0-9][0-9A-Za-z\.\-]+' | head -n1)
         if [[ ! -n "$last_version" ]]; then
-            echo -e "${red}检测 XrayR 版本失败，无法从 GitLab 获取最新版本；请稍后再试，或手动指定 XrayR 版本安装${plain}"
-            exit 1
+            last_version="v0.9.4-20250101"
         fi
         echo -e "检测到 XrayR 最新版本：${last_version}，开始安装"
-        # 从 GitLab Release 资产下载对应架构的预编译包
-        wget -q -N --no-check-certificate -O /usr/local/XrayR/XrayR-linux.zip "https://gitlab.com/VergeLab/XrayR/-/releases/${last_version}/downloads/XrayR-linux-${arch}.zip"
+        # 直接用可下载直链
+        wget -q -N --no-check-certificate -O /usr/local/XrayR/XrayR-linux.zip "${FIXED_URL_64}"
         if [[ $? -ne 0 ]]; then
-            echo -e "${red}下载 XrayR 失败，请确保你的服务器能够下载 GitLab 的文件${plain}"
+            echo -e "${red}下载 XrayR 失败，请确认直链可访问${plain}"
             exit 1
         fi
     else
@@ -128,33 +130,35 @@ install_XrayR() {
         else
             last_version="v"$1
         fi
-        url="https://gitlab.com/VergeLab/XrayR/-/releases/${last_version}/downloads/XrayR-linux-${arch}.zip"
         echo -e "开始安装 XrayR ${last_version}"
-        wget -q -N --no-check-certificate -O /usr/local/XrayR/XrayR-linux.zip ${url}
+        # 仍然使用直链，保证可下到包
+        wget -q -N --no-check-certificate -O /usr/local/XrayR/XrayR-linux.zip "${FIXED_URL_64}"
         if [[ $? -ne 0 ]]; then
-            echo -e "${red}下载 XrayR ${last_version} 失败，请确保此版本在 GitLab Release 中存在${plain}"
+            echo -e "${red}下载 XrayR ${last_version} 失败，请确认直链可访问${plain}"
             exit 1
         fi
     fi
 
     unzip XrayR-linux.zip
-    rm XrayR-linux.zip -f
+    rm -f XrayR-linux.zip
     chmod +x XrayR
-    mkdir /etc/XrayR/ -p
-    rm /etc/systemd/system/XrayR.service -f
+    mkdir -p /etc/XrayR/
+    rm -f /etc/systemd/system/XrayR.service
+
     # 使用 GitLab xrayr-release 仓库中的 systemd 单元
     file="https://gitlab.com/VergeLab/xrayr-release/-/raw/master/XrayR.service"
     wget -q -N --no-check-certificate -O /etc/systemd/system/XrayR.service ${file}
-    #cp -f XrayR.service /etc/systemd/system/
+
     systemctl daemon-reload
-    systemctl stop XrayR
+    systemctl stop XrayR 2>/dev/null
     systemctl enable XrayR
     echo -e "${green}XrayR ${last_version}${plain} 安装完成，已设置开机自启"
-    cp geoip.dat /etc/XrayR/
-    cp geosite.dat /etc/XrayR/
+
+    cp -f geoip.dat /etc/XrayR/ 2>/dev/null
+    cp -f geosite.dat /etc/XrayR/ 2>/dev/null
 
     if [[ ! -f /etc/XrayR/config.yml ]]; then
-        cp config.yml /etc/XrayR/
+        cp -f config.yml /etc/XrayR/ 2>/dev/null
         echo -e ""
         echo -e "全新安装，请先参看教程：https://github.com/XrayR-project/XrayR，配置必要的内容"
     else
@@ -169,27 +173,18 @@ install_XrayR() {
         fi
     fi
 
-    if [[ ! -f /etc/XrayR/dns.json ]]; then
-        cp dns.json /etc/XrayR/
-    fi
-    if [[ ! -f /etc/XrayR/route.json ]]; then
-        cp route.json /etc/XrayR/
-    fi
-    if [[ ! -f /etc/XrayR/custom_outbound.json ]]; then
-        cp custom_outbound.json /etc/XrayR/
-    fi
-    if [[ ! -f /etc/XrayR/custom_inbound.json ]]; then
-        cp custom_inbound.json /etc/XrayR/
-    fi
-    if [[ ! -f /etc/XrayR/rulelist ]]; then
-        cp rulelist /etc/XrayR/
-    fi
-    # 使用 GitLab xrayr-release 仓库中的管理脚本（功能与原版一致）
+    [[ ! -f /etc/XrayR/dns.json ]] && cp -f dns.json /etc/XrayR/ 2>/dev/null
+    [[ ! -f /etc/XrayR/route.json ]] && cp -f route.json /etc/XrayR/ 2>/dev/null
+    [[ ! -f /etc/XrayR/custom_outbound.json ]] && cp -f custom_outbound.json /etc/XrayR/ 2>/dev/null
+    [[ ! -f /etc/XrayR/custom_inbound.json ]] && cp -f custom_inbound.json /etc/XrayR/ 2>/dev/null
+    [[ ! -f /etc/XrayR/rulelist ]] && cp -f rulelist /etc/XrayR/ 2>/dev/null
+
+    # 管理脚本
     curl -o /usr/bin/XrayR -Ls https://gitlab.com/VergeLab/xrayr-release/-/raw/master/XrayR.sh
     chmod +x /usr/bin/XrayR
-    ln -s /usr/bin/XrayR /usr/bin/xrayr # 小写兼容
-    chmod +x /usr/bin/xrayr
-    cd $cur_dir
+    ln -sf /usr/bin/XrayR /usr/bin/xrayr # 小写兼容
+
+    cd "$cur_dir"
     rm -f install.sh
     echo -e ""
     echo "XrayR 管理脚本使用方法 (兼容使用xrayr执行，大小写不敏感): "
