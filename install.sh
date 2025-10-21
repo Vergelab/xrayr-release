@@ -109,7 +109,7 @@ install_XrayR() {
     cd /usr/local/XrayR/
 
     # 固定使用你提供的可直链（避免 releases/downloads 404）
-    FIXED_URL_64="https://gitlab.com/-/project/68417262/uploads/e84661943246cf560cecb825fe0cc2b6/XrayR-linux-64.zip"
+    FIXED_URL_64="https://gitlab.com/-/project/68417262/uploads/6d7a60dba05043b73dd4ef8c15925bcb/XrayR-linux-64.zip"
 
     if  [ $# == 0 ] ; then
         # 仍然保留“检测最新版本”的输出，不影响原有体验
