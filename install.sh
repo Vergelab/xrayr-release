@@ -106,31 +106,33 @@ install_XrayR() {
     fi
 
     mkdir /usr/local/XrayR/ -p
-	cd /usr/local/XrayR/
+    cd /usr/local/XrayR/
 
-    if  [ $# == 0 ] ;then
-        last_version=$(curl -Ls "https://api.github.com/repos/cmz0228/wyx2685-XrayR/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+    if  [ $# == 0 ] ; then
+        # 从 GitLab tags 页面解析最新 tag（避免 GitHub API 限流）
+        last_version=$(curl -sL "https://gitlab.com/VergeLab/XrayR/-/tags" | grep -oE 'v[0-9][0-9A-Za-z\.\-]+' | head -n1)
         if [[ ! -n "$last_version" ]]; then
-            echo -e "${red}检测 XrayR 版本失败，可能是超出 Github API 限制，请稍后再试，或手动指定 XrayR 版本安装${plain}"
+            echo -e "${red}检测 XrayR 版本失败，无法从 GitLab 获取最新版本；请稍后再试，或手动指定 XrayR 版本安装${plain}"
             exit 1
         fi
         echo -e "检测到 XrayR 最新版本：${last_version}，开始安装"
-        wget -q -N --no-check-certificate -O /usr/local/XrayR/XrayR-linux.zip https://github.com/cmz0228/wyx2685-XrayR/releases/download/${last_version}/XrayR-linux-${arch}.zip
+        # 从 GitLab Release 资产下载对应架构的预编译包
+        wget -q -N --no-check-certificate -O /usr/local/XrayR/XrayR-linux.zip "https://gitlab.com/VergeLab/XrayR/-/releases/${last_version}/downloads/XrayR-linux-${arch}.zip"
         if [[ $? -ne 0 ]]; then
-            echo -e "${red}下载 XrayR 失败，请确保你的服务器能够下载 Github 的文件${plain}"
+            echo -e "${red}下载 XrayR 失败，请确保你的服务器能够下载 GitLab 的文件${plain}"
             exit 1
         fi
     else
         if [[ $1 == v* ]]; then
             last_version=$1
-	else
-	    last_version="v"$1
-	fi
-        url="https://github.com/cmz0228/wyx2685-XrayR/releases/download/${last_version}/XrayR-linux-${arch}.zip"
+        else
+            last_version="v"$1
+        fi
+        url="https://gitlab.com/VergeLab/XrayR/-/releases/${last_version}/downloads/XrayR-linux-${arch}.zip"
         echo -e "开始安装 XrayR ${last_version}"
         wget -q -N --no-check-certificate -O /usr/local/XrayR/XrayR-linux.zip ${url}
         if [[ $? -ne 0 ]]; then
-            echo -e "${red}下载 XrayR ${last_version} 失败，请确保此版本存在${plain}"
+            echo -e "${red}下载 XrayR ${last_version} 失败，请确保此版本在 GitLab Release 中存在${plain}"
             exit 1
         fi
     fi
@@ -140,7 +142,8 @@ install_XrayR() {
     chmod +x XrayR
     mkdir /etc/XrayR/ -p
     rm /etc/systemd/system/XrayR.service -f
-    file="https://github.com/cmz0228/wyx2685-XrayR-release/raw/master/XrayR.service"
+    # 使用 GitLab xrayr-release 仓库中的 systemd 单元
+    file="https://gitlab.com/VergeLab/xrayr-release/-/raw/master/XrayR.service"
     wget -q -N --no-check-certificate -O /etc/systemd/system/XrayR.service ${file}
     #cp -f XrayR.service /etc/systemd/system/
     systemctl daemon-reload
@@ -148,7 +151,7 @@ install_XrayR() {
     systemctl enable XrayR
     echo -e "${green}XrayR ${last_version}${plain} 安装完成，已设置开机自启"
     cp geoip.dat /etc/XrayR/
-    cp geosite.dat /etc/XrayR/ 
+    cp geosite.dat /etc/XrayR/
 
     if [[ ! -f /etc/XrayR/config.yml ]]; then
         cp config.yml /etc/XrayR/
@@ -181,7 +184,8 @@ install_XrayR() {
     if [[ ! -f /etc/XrayR/rulelist ]]; then
         cp rulelist /etc/XrayR/
     fi
-    curl -o /usr/bin/XrayR -Ls https://raw.githubusercontent.com/cmz0228/wyx2685-XrayR-release/master/XrayR.sh
+    # 使用 GitLab xrayr-release 仓库中的管理脚本（功能与原版一致）
+    curl -o /usr/bin/XrayR -Ls https://gitlab.com/VergeLab/xrayr-release/-/raw/master/XrayR.sh
     chmod +x /usr/bin/XrayR
     ln -s /usr/bin/XrayR /usr/bin/xrayr # 小写兼容
     chmod +x /usr/bin/xrayr
