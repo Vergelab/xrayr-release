@@ -5,16 +5,3 @@ A Xray backend framework that can easily support many panels.
 
 Find the source code here: [XrayR-project/XrayR](https://github.com/XrayR-project/XrayR)
 
-# 详细使用教程
-
-[教程](https://xrayr-project.github.io/XrayR-doc/)
-
-# 一键安装
-
-```
-bash <(curl -Ls https://raw.githubusercontent.com/cmz0228/wyx2685-XrayR-release/master/install.sh)
-```
-# Docker 安装
-
-暂不支持
-
