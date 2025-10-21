@@ -1,213 +1,222 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -e
 
-red='\033[0;31m'
-green='\033[0;32m'
-yellow='\033[0;33m'
-plain='\033[0m'
-
+red='\033[0;31m'; green='\033[0;32m'; yellow='\033[0;33m'; plain='\033[0m'
 cur_dir=$(pwd)
 
-# check root
-[[ $EUID -ne 0 ]] && echo -e "${red}错误：${plain} 必须使用root用户运行此脚本！\n" && exit 1
+# ---------- 0) Root & OS checks ----------
+[[ $EUID -ne 0 ]] && echo -e "${red}错误：${plain} 必须使用 root 用户运行！" && exit 1
 
-# check os
 if [[ -f /etc/redhat-release ]]; then
-    release="centos"
-elif cat /etc/issue | grep -Eqi "debian"; then
-    release="debian"
-elif cat /etc/issue | grep -Eqi "ubuntu"; then
-    release="ubuntu"
-elif cat /etc/issue | grep -Eqi "centos|red hat|redhat"; then
-    release="centos"
-elif cat /proc/version | grep -Eqi "debian"; then
-    release="debian"
-elif cat /proc/version | grep -Eqi "ubuntu"; then
-    release="ubuntu"
-elif cat /proc/version | grep -Eqi "centos|red hat|redhat"; then
-    release="centos"
+  release="centos"
+elif grep -Eqi "debian" /etc/issue /proc/version 2>/dev/null; then
+  release="debian"
+elif grep -Eqi "ubuntu" /etc/issue /proc/version 2>/dev/null; then
+  release="ubuntu"
+elif grep -Eqi "centos|red hat|redhat" /etc/issue /proc/version 2>/dev/null; then
+  release="centos"
 else
-    echo -e "${red}未检测到系统版本，请联系脚本作者！${plain}\n" && exit 1
+  echo -e "${red}未检测到系统版本，请联系脚本作者！${plain}"; exit 1
 fi
 
 arch=$(arch)
+case "$arch" in
+  x86_64|x64|amd64)  MACHINE="64";   GOARCH="amd64" ;;
+  aarch64|arm64)     MACHINE="arm64-v8a"; GOARCH="arm64" ;;
+  s390x)             MACHINE="s390x"; GOARCH="s390x" ;;
+  *) MACHINE="64"; GOARCH="amd64"; echo -e "${yellow}未知架构，默认按 x86_64 处理${plain}";;
+esac
+echo "架构: $arch (go: $GOARCH)"
 
-if [[ $arch == "x86_64" || $arch == "x64" || $arch == "amd64" ]]; then
-    arch="64"
-elif [[ $arch == "aarch64" || $arch == "arm64" ]]; then
-    arch="arm64-v8a"
-elif [[ $arch == "s390x" ]]; then
-    arch="s390x"
-else
-    arch="64"
-    echo -e "${red}检测架构失败，使用默认架构: ${arch}${plain}"
-fi
-
-echo "架构: ${arch}"
-
-if [ "$(getconf WORD_BIT)" != '32' ] && [ "$(getconf LONG_BIT)" != '64' ] ; then
-    echo "本软件不支持 32 位系统(x86)，请使用 64 位系统(x86_64)，如果检测有误，请联系作者"
-    exit 2
-fi
-
+# OS version
 os_version=""
-
-# os version
-if [[ -f /etc/os-release ]]; then
-    os_version=$(awk -F'[= ."]' '/VERSION_ID/{print $3}' /etc/os-release)
-fi
-if [[ -z "$os_version" && -f /etc/lsb-release ]]; then
-    os_version=$(awk -F'[= ."]+' '/DISTRIB_RELEASE/{print $2}' /etc/lsb-release)
-fi
-
+[[ -f /etc/os-release ]] && os_version=$(awk -F'[= ."]' '/VERSION_ID/{print $3}' /etc/os-release)
+[[ -z "$os_version" && -f /etc/lsb-release ]] && os_version=$(awk -F'[= ."]+' '/DISTRIB_RELEASE/{print $2}' /etc/lsb-release)
 if [[ x"${release}" == x"centos" ]]; then
-    if [[ ${os_version} -le 6 ]]; then
-        echo -e "${red}请使用 CentOS 7 或更高版本的系统！${plain}\n" && exit 1
-    fi
+  [[ ${os_version} -le 6 ]] && echo -e "${red}请使用 CentOS 7+ ${plain}" && exit 1
 elif [[ x"${release}" == x"ubuntu" ]]; then
-    if [[ ${os_version} -lt 16 ]]; then
-        echo -e "${red}请使用 Ubuntu 16 或更高版本的系统！${plain}\n" && exit 1
-    fi
+  [[ ${os_version} -lt 16 ]] && echo -e "${red}请使用 Ubuntu 16+ ${plain}" && exit 1
 elif [[ x"${release}" == x"debian" ]]; then
-    if [[ ${os_version} -lt 8 ]]; then
-        echo -e "${red}请使用 Debian 8 或更高版本的系统！${plain}\n" && exit 1
-    fi
+  [[ ${os_version} -lt 8  ]] && echo -e "${red}请使用 Debian 8+ ${plain}" && exit 1
 fi
 
+# ---------- 1) Base deps ----------
 install_base() {
-    if [[ x"${release}" == x"centos" ]]; then
-        yum install epel-release -y
-        yum install wget curl unzip tar crontabs socat -y
-    else
-        apt update -y
-        apt install wget curl unzip tar cron socat -y
-    fi
+  if [[ x"${release}" == x"centos" ]]; then
+    yum install -y epel-release
+    yum install -y wget curl unzip tar cronie socat git make gcc gcc-c++ golang || true
+    systemctl enable crond >/dev/null 2>&1 || true
+    systemctl start crond  >/dev/null 2>&1 || true
+  else
+    apt update -y
+    apt install -y wget curl unzip tar cron socat git build-essential golang || true
+    systemctl enable cron >/dev/null 2>&1 || true
+    systemctl start cron  >/dev/null 2>&1 || true
+  fi
 }
-
-# 0: running, 1: not running, 2: not installed
-check_status() {
-    if [[ ! -f /etc/systemd/system/XrayR.service ]]; then
-        return 2
-    fi
-    temp=$(systemctl status XrayR | grep Active | awk '{print $3}' | cut -d "(" -f2 | cut -d ")" -f1)
-    if [[ x"${temp}" == x"running" ]]; then
-        return 0
-    else
-        return 1
-    fi
-}
-
-install_acme() {
-    curl https://get.acme.sh | sh
-}
-
-install_XrayR() {
-    if [[ -e /usr/local/XrayR/ ]]; then
-        rm /usr/local/XrayR/ -rf
-    fi
-
-    mkdir /usr/local/XrayR/ -p
-	cd /usr/local/XrayR/
-
-    if  [ $# == 0 ] ;then
-        last_version=$(curl -Ls "https://api.github.com/repos/cmz0228/wyx2685-XrayR/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
-        if [[ ! -n "$last_version" ]]; then
-            echo -e "${red}检测 XrayR 版本失败，可能是超出 Github API 限制，请稍后再试，或手动指定 XrayR 版本安装${plain}"
-            exit 1
-        fi
-        echo -e "检测到 XrayR 最新版本：${last_version}，开始安装"
-        wget -q -N --no-check-certificate -O /usr/local/XrayR/XrayR-linux.zip https://github.com/cmz0228/wyx2685-XrayR/releases/download/${last_version}/XrayR-linux-${arch}.zip
-        if [[ $? -ne 0 ]]; then
-            echo -e "${red}下载 XrayR 失败，请确保你的服务器能够下载 Github 的文件${plain}"
-            exit 1
-        fi
-    else
-        if [[ $1 == v* ]]; then
-            last_version=$1
-	else
-	    last_version="v"$1
-	fi
-        url="https://github.com/cmz0228/wyx2685-XrayR/releases/download/${last_version}/XrayR-linux-${arch}.zip"
-        echo -e "开始安装 XrayR ${last_version}"
-        wget -q -N --no-check-certificate -O /usr/local/XrayR/XrayR-linux.zip ${url}
-        if [[ $? -ne 0 ]]; then
-            echo -e "${red}下载 XrayR ${last_version} 失败，请确保此版本存在${plain}"
-            exit 1
-        fi
-    fi
-
-    unzip XrayR-linux.zip
-    rm XrayR-linux.zip -f
-    chmod +x XrayR
-    mkdir /etc/XrayR/ -p
-    rm /etc/systemd/system/XrayR.service -f
-    file="https://github.com/cmz0228/wyx2685-XrayR-release/raw/master/XrayR.service"
-    wget -q -N --no-check-certificate -O /etc/systemd/system/XrayR.service ${file}
-    #cp -f XrayR.service /etc/systemd/system/
-    systemctl daemon-reload
-    systemctl stop XrayR
-    systemctl enable XrayR
-    echo -e "${green}XrayR ${last_version}${plain} 安装完成，已设置开机自启"
-    cp geoip.dat /etc/XrayR/
-    cp geosite.dat /etc/XrayR/ 
-
-    if [[ ! -f /etc/XrayR/config.yml ]]; then
-        cp config.yml /etc/XrayR/
-        echo -e ""
-        echo -e "全新安装，请先参看教程：https://github.com/XrayR-project/XrayR，配置必要的内容"
-    else
-        systemctl start XrayR
-        sleep 2
-        check_status
-        echo -e ""
-        if [[ $? == 0 ]]; then
-            echo -e "${green}XrayR 重启成功${plain}"
-        else
-            echo -e "${red}XrayR 可能启动失败，请稍后使用 XrayR log 查看日志信息，若无法启动，则可能更改了配置格式，请前往 wiki 查看：https://github.com/XrayR-project/XrayR/wiki${plain}"
-        fi
-    fi
-
-    if [[ ! -f /etc/XrayR/dns.json ]]; then
-        cp dns.json /etc/XrayR/
-    fi
-    if [[ ! -f /etc/XrayR/route.json ]]; then
-        cp route.json /etc/XrayR/
-    fi
-    if [[ ! -f /etc/XrayR/custom_outbound.json ]]; then
-        cp custom_outbound.json /etc/XrayR/
-    fi
-    if [[ ! -f /etc/XrayR/custom_inbound.json ]]; then
-        cp custom_inbound.json /etc/XrayR/
-    fi
-    if [[ ! -f /etc/XrayR/rulelist ]]; then
-        cp rulelist /etc/XrayR/
-    fi
-    curl -o /usr/bin/XrayR -Ls https://raw.githubusercontent.com/cmz0228/wyx2685-XrayR-release/master/XrayR.sh
-    chmod +x /usr/bin/XrayR
-    ln -s /usr/bin/XrayR /usr/bin/xrayr # 小写兼容
-    chmod +x /usr/bin/xrayr
-    cd $cur_dir
-    rm -f install.sh
-    echo -e ""
-    echo "XrayR 管理脚本使用方法 (兼容使用xrayr执行，大小写不敏感): "
-    echo "------------------------------------------"
-    echo "XrayR                    - 显示管理菜单 (功能更多)"
-    echo "XrayR start              - 启动 XrayR"
-    echo "XrayR stop               - 停止 XrayR"
-    echo "XrayR restart            - 重启 XrayR"
-    echo "XrayR status             - 查看 XrayR 状态"
-    echo "XrayR enable             - 设置 XrayR 开机自启"
-    echo "XrayR disable            - 取消 XrayR 开机自启"
-    echo "XrayR log                - 查看 XrayR 日志"
-    echo "XrayR update             - 更新 XrayR"
-    echo "XrayR update x.x.x       - 更新 XrayR 指定版本"
-    echo "XrayR config             - 显示配置文件内容"
-    echo "XrayR install            - 安装 XrayR"
-    echo "XrayR uninstall          - 卸载 XrayR"
-    echo "XrayR version            - 查看 XrayR 版本"
-    echo "------------------------------------------"
-}
-
-echo -e "${green}开始安装${plain}"
 install_base
-# install_acme
-install_XrayR $1
+
+# ---------- 2) figure latest tag from GitLab (VergeLab/XrayR) ----------
+GL_PROJECT="VergeLab/XrayR"
+LATEST_TAG=""
+# 2a) try GitLab API (若服务器能访问 API，无需登录)
+if command -v jq >/dev/null 2>&1; then
+  LATEST_TAG=$(curl -sL "https://gitlab.com/api/v4/projects/$(python3 - <<'PY'
+import urllib.parse; print(urllib.parse.quote("VergeLab/XrayR",""))
+PY
+)/repository/tags" | jq -r '.[0].name' || true)
+fi
+# 2b) fallback：抓 tags 页面 HTML 解析第一个以 v 开头的 tag
+if [[ -z "$LATEST_TAG" || "$LATEST_TAG" == "null" ]]; then
+  LATEST_TAG=$(curl -sL "https://gitlab.com/VergeLab/XrayR/-/tags" | grep -oE 'v[0-9][^< ]+' | head -n1 || true)
+fi
+# 2c) 再不行就用 master
+if [[ -z "$LATEST_TAG" || "$LATEST_TAG" == "null" ]]; then
+  echo -e "${yellow}未能从 GitLab 获取 tag，将使用 master 分支源码${plain}"
+fi
+
+# ---------- 3) prepare dir ----------
+rm -rf /usr/local/XrayR
+mkdir -p /usr/local/XrayR
+cd /usr/local/XrayR
+
+# ---------- 4) download source & build ----------
+SRC_TGZ=""
+if [[ -n "$LATEST_TAG" ]]; then
+  SRC_TGZ="XrayR-${LATEST_TAG}.tar.gz"
+  echo -e "${green}检测到最新版本：${LATEST_TAG}${plain}，开始下载源码并构建"
+  curl -fL "https://gitlab.com/VergeLab/XrayR/-/archive/${LATEST_TAG}/XrayR-${LATEST_TAG}.tar.gz" -o "${SRC_TGZ}" || LATEST_TAG=""
+fi
+
+if [[ -z "$LATEST_TAG" ]]; then
+  SRC_TGZ="XrayR-master.tar.gz"
+  echo -e "${yellow}下载 tag 失败，转为使用 master 源码${plain}"
+  curl -fL "https://gitlab.com/VergeLab/XrayR/-/archive/master/XrayR-master.tar.gz" -o "${SRC_TGZ}"
+fi
+
+tar xf "${SRC_TGZ}"
+SRC_DIR=$(tar tf "${SRC_TGZ}" | head -n1 | cut -d/ -f1)
+cd "${SRC_DIR}"
+
+# go env（某些发行版需显式设置）
+export GO111MODULE=on
+export CGO_ENABLED=0
+export GOOS=linux
+export GOARCH=${GOARCH}
+
+echo "开始编译 XrayR （这一步与 CPU/内存有关，需耐心等待）"
+# 尝试常规构建
+go mod download
+go build -trimpath -ldflags "-s -w" -o XrayR ./ || { echo -e "${red}go build 失败，请检查 golang 版本或网络${plain}"; exit 1; }
+
+# 安装二进制
+install -m 0755 XrayR /usr/local/XrayR/XrayR
+
+# ---------- 5) geodata ----------
+mkdir -p /etc/XrayR
+# 使用 Loyalsoldier 最新 geodata
+curl -fL "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat"   -o /etc/XrayR/geoip.dat
+curl -fL "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat" -o /etc/XrayR/geosite.dat
+
+# ---------- 6) systemd ----------
+# 从你的 GitLab release 仓库取服务单元文件
+curl -fL "https://gitlab.com/VergeLab/xrayr-release/-/raw/master/XrayR.service" -o /etc/systemd/system/XrayR.service
+systemctl daemon-reload
+systemctl stop XrayR 2>/dev/null || true
+systemctl enable XrayR
+
+# ---------- 7) config ----------
+if [[ ! -f /etc/XrayR/config.yml ]]; then
+  cat >/etc/XrayR/config.yml <<'YML'
+# 最小可运行模板：请按需修改（面板类型、API地址、Token、节点ID等）
+Log:
+  Level: warning
+DnsConfigPath: ""
+RouteConfigPath: ""
+InboundConfigPath: ""
+OutboundConfigPath: ""
+ConnetionConfig: {}
+Nodes:
+  - PanelType: "V2board"         # 或 "SSpanel","ProxyPanel","GoV2Panel" 等
+    ApiConfig:
+      ApiHost: "https://your-panel.example.com"
+      ApiKey: "REPLACE_WITH_PANEL_TOKEN"
+      NodeID:  1
+      NodeType: V2ray
+      Timeout: 60
+      EnableVless: true
+      RuleListPath: ""
+    ControllerConfig:
+      ListenIP: 0.0.0.0
+      UpdatePeriodic: 60
+      EnableDNS: true
+      CertConfig:
+        CertMode: none
+        CertDomain: ""
+        Email: ""
+        Provider: ""
+        DNSEnv: []
+YML
+  echo -e "${yellow}已生成 /etc/XrayR/config.yml（模板），请根据面板实际信息修改后再启动${plain}"
+fi
+
+# ---------- 8) helper CLI ----------
+cat >/usr/bin/XrayR <<'SH'
+#!/usr/bin/env bash
+case "$1" in
+  start)    systemctl start XrayR ;;
+  stop)     systemctl stop XrayR ;;
+  restart)  systemctl restart XrayR ;;
+  status)   systemctl status XrayR --no-pager ;;
+  enable)   systemctl enable XrayR ;;
+  disable)  systemctl disable XrayR ;;
+  log)      journalctl -u XrayR -e --no-pager ;;
+  config)   ${PAGER:-cat} /etc/XrayR/config.yml ;;
+  update)
+    echo "拉取最新源码重新编译..."
+    systemctl stop XrayR || true
+    TMP=$(mktemp -d); cd "$TMP"
+    curl -sL "https://gitlab.com/VergeLab/XrayR/-/tags" | grep -oE 'v[0-9][^< ]+' | head -n1 >.tag
+    TAG=$(cat .tag)
+    if [[ -n "$TAG" ]]; then
+      curl -fL "https://gitlab.com/VergeLab/XrayR/-/archive/${TAG}/XrayR-${TAG}.tar.gz" -o src.tgz || TAG=""
+    fi
+    if [[ -z "$TAG" ]]; then
+      echo "获取 tag 失败，使用 master"
+      curl -fL "https://gitlab.com/VergeLab/XrayR/-/archive/master/XrayR-master.tar.gz" -o src.tgz
+    fi
+    tar xf src.tgz; cd XrayR-*
+    export GO111MODULE=on CGO_ENABLED=0 GOOS=linux
+    # 自动探测 GOARCH
+    case "$(uname -m)" in
+      x86_64|amd64) export GOARCH=amd64;;
+      aarch64|arm64) export GOARCH=arm64;;
+      s390x) export GOARCH=s390x;;
+      *) export GOARCH=amd64;;
+    esac
+    go mod download && go build -trimpath -ldflags "-s -w" -o XrayR ./
+    install -m 0755 XrayR /usr/local/XrayR/XrayR
+    systemctl start XrayR
+    echo "已更新并重启 XrayR"
+    ;;
+  version)  /usr/local/XrayR/XrayR -version 2>/dev/null || echo "自编译版本" ;;
+  *) echo "用法: XrayR {start|stop|restart|status|enable|disable|log|config|update|version}";;
+esac
+SH
+chmod +x /usr/bin/XrayR
+ln -sf /usr/bin/XrayR /usr/bin/xrayr 2>/dev/null || true
+
+cd "$cur_dir"
+echo -e "${green}XrayR 安装步骤完成${plain}"
+echo "------------------------------------------"
+echo "常用命令："
+echo "XrayR          - 显示帮助"
+echo "XrayR config   - 查看配置（请先修改面板参数再启动）"
+echo "XrayR start    - 启动"
+echo "XrayR stop     - 停止"
+echo "XrayR restart  - 重启"
+echo "XrayR status   - 状态"
+echo "XrayR log      - 查看日志"
+echo "XrayR update   - 拉取最新源码并重新编译"
+echo "------------------------------------------"
+
