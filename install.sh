@@ -26,7 +26,7 @@ elif cat /proc/version | grep -Eqi "ubuntu"; then
 elif cat /proc/version | grep -Eqi "centos|red hat|redhat"; then
     release="centos"
 else
-    echo -e "${red}未检测到系统版本，请联系脚本作者！${plain}\n" && exit 1
+    echo -e "${red}未检测到系统版本，请联系 Vergelab！${plain}\n" && exit 1
 fi
 
 arch=$(arch)
@@ -45,7 +45,7 @@ fi
 echo "架构: ${arch}"
 
 if [ "$(getconf WORD_BIT)" != '32' ] && [ "$(getconf LONG_BIT)" != '64' ] ; then
-    echo "本软件不支持 32 位系统(x86)，请使用 64 位系统(x86_64)，如果检测有误，请联系作者"
+    echo "本软件不支持 32 位系统(x86)，请使用 64 位系统(x86_64)，如果检测有误，请联系 Vergelab"
     exit 2
 fi
 
@@ -139,6 +139,10 @@ install_XrayR() {
                 echo -e "${red}下载 XrayR ${last_version} 失败，请确保你的服务器能够下载 Github 的文件${plain}"
                 exit 1
             fi
+            last_version=$(curl -fsSL -o /dev/null -w '%{url_effective}' "https://github.com/Vergelab/xrayr-release/releases/latest" | grep -oE 'v[0-9][0-9A-Za-z\.\-]+' | head -n1)
+            if [[ ! -n "$last_version" ]]; then
+                last_version="v0.9.4-20250101"
+            fi
         fi
     fi
 
@@ -163,16 +167,17 @@ install_XrayR() {
     if [[ ! -f /etc/XrayR/config.yml ]]; then
         cp -f config.yml /etc/XrayR/ 2>/dev/null
         echo -e ""
-        echo -e "全新安装，请先参看教程：https://github.com/XrayR-project/XrayR，配置必要的内容"
+        echo -e "全新安装，请先参看教程：https://github.com/Vergelab/XrayR，配置必要的内容"
     else
         systemctl start XrayR
         sleep 2
         check_status
+        status_rc=$?
         echo -e ""
-        if [[ $? == 0 ]]; then
+        if [[ ${status_rc} == 0 ]]; then
             echo -e "${green}XrayR 重启成功${plain}"
         else
-            echo -e "${red}XrayR 可能启动失败，请稍后使用 XrayR log 查看日志信息，若无法启动，则可能更改了配置格式，请前往 wiki 查看：https://github.com/XrayR-project/XrayR/wiki${plain}"
+            echo -e "${red}XrayR 可能启动失败，请稍后使用 XrayR log 查看日志信息，若无法启动，则可能更改了配置格式，请前往 https://github.com/Vergelab/XrayR 查看${plain}"
         fi
     fi
 
