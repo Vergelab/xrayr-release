@@ -8,29 +8,31 @@ Vergelab 的 XrayR 发布与安装仓库。
 
 需要 root。脚本会安装 `ca-certificates`、`curl`、`unzip` 和 `tar`，再从 GitHub Release 下载与当前 CPU 架构对应的安装包。
 
+不写版本号时，脚本跟随 GitHub Releases 的 `latest`。当前最新版是 **v0.2**。
+
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/Vergelab/xrayr-release/master/install.sh)
 ```
 
-指定版本时，`0.1` 和 `v0.1` 是同一个版本：
+指定版本时，`0.2` 和 `v0.2` 是同一个版本：
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/Vergelab/xrayr-release/master/install.sh) 0.1
-bash <(curl -fsSL https://raw.githubusercontent.com/Vergelab/xrayr-release/master/install.sh) v0.1
+bash <(curl -fsSL https://raw.githubusercontent.com/Vergelab/xrayr-release/master/install.sh) 0.2
+bash <(curl -fsSL https://raw.githubusercontent.com/Vergelab/xrayr-release/master/install.sh) v0.2
 ```
 
-未写版本号时，脚本跟随 GitHub Releases 的 `latest`。GitHub 的 `latest` 不包含预发布版本；当前预发布标签 `v0.1` 不会被当成最新版，需要显式指定。
+`v0.1` 仍可显式安装，它不是最新版。脚本按 CPU 选择安装包：x86_64 用 `XrayR-linux-64.zip`，aarch64 用 `XrayR-linux-arm64-v8a.zip`，s390x 用 `XrayR-linux-s390x.zip`。
 
 安装完成后执行 `XrayR`（或 `xrayr`）打开管理菜单。配置目录是 `/etc/XrayR`（权限 `700`），`config.yml` 权限是 `600`。
 
-发布包若附带 `XrayR-linux-<arch>.zip.sha256`（内容为 `sha256sum` 格式），安装时会校验。没有该文件时会警告并继续；校验和不匹配则中止，且不会改动已有安装。
+每个发布包都附带 `XrayR-linux-<arch>.zip.sha256`（内容为 `sha256sum` 格式），安装时会校验。没有该文件时会警告并继续；校验和不匹配则中止，且不会改动已有安装。
 
 ## 更新
 
 ```bash
 XrayR update
-XrayR update 0.1
-XrayR update v0.1
+XrayR update 0.2
+XrayR update v0.2
 ```
 
 更新会先把新包下载到临时目录，用 `unzip -t` 和 `./XrayR version` 检查，通过后才停止服务并替换 `/usr/local/XrayR`。下载或校验失败时，正在运行的安装和管理脚本都保持原样。若新版本启动失败，会自动恢复 `/usr/local/XrayR.bak` 并重新启动。
