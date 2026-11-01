@@ -161,7 +161,7 @@ check_status() {
     return 1
 }
 
-# 成功时向标准输出打印 tag，例如 v0.2
+# 成功时向标准输出打印 tag，例如 v0.3
 resolve_latest_version() {
     local effective=""
     local tag=""
