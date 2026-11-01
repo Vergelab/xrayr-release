@@ -108,20 +108,19 @@ install_XrayR() {
     mkdir -p /usr/local/XrayR/
     cd /usr/local/XrayR/
 
-    # 固定使用你提供的可直链（避免 releases/downloads 404）
-    FIXED_URL_64="https://gitlab.com/-/project/68417262/uploads/6d7a60dba05043b73dd4ef8c15925bcb/XrayR-linux-64.zip"
+    # GitHub Release 资产：未指定版本时用 latest
+    FIXED_URL_64="https://github.com/Vergelab/xrayr-release/releases/latest/download/XrayR-linux-64.zip"
 
     if  [ $# == 0 ] ; then
-        # 仍然保留“检测最新版本”的输出，不影响原有体验
-        last_version=$(curl -sL "https://gitlab.com/VergeLab/XrayR/-/tags" | grep -oE 'v[0-9][0-9A-Za-z\.\-]+' | head -n1)
+        # 从 releases/latest 跳转解析最新 tag（避免 GitHub API 限流）
+        last_version=$(curl -fsSL -o /dev/null -w '%{url_effective}' "https://github.com/Vergelab/xrayr-release/releases/latest" | grep -oE 'v[0-9][0-9A-Za-z\.\-]+' | head -n1)
         if [[ ! -n "$last_version" ]]; then
             last_version="v0.9.4-20250101"
         fi
         echo -e "检测到 XrayR 最新版本：${last_version}，开始安装"
-        # 直接用可下载直链
         wget -q -N --no-check-certificate -O /usr/local/XrayR/XrayR-linux.zip "${FIXED_URL_64}"
         if [[ $? -ne 0 ]]; then
-            echo -e "${red}下载 XrayR 失败，请确认直链可访问${plain}"
+            echo -e "${red}下载 XrayR 失败，请确保你的服务器能够下载 Github 的文件${plain}"
             exit 1
         fi
     else
@@ -130,12 +129,16 @@ install_XrayR() {
         else
             last_version="v"$1
         fi
+        version_url="https://github.com/Vergelab/xrayr-release/releases/download/${last_version}/XrayR-linux-64.zip"
         echo -e "开始安装 XrayR ${last_version}"
-        # 仍然使用直链，保证可下到包
-        wget -q -N --no-check-certificate -O /usr/local/XrayR/XrayR-linux.zip "${FIXED_URL_64}"
+        wget -q -N --no-check-certificate -O /usr/local/XrayR/XrayR-linux.zip "${version_url}"
         if [[ $? -ne 0 ]]; then
-            echo -e "${red}下载 XrayR ${last_version} 失败，请确认直链可访问${plain}"
-            exit 1
+            echo -e "${yellow}未找到 XrayR ${last_version} 的安装包，改为下载最新版本${plain}"
+            wget -q -N --no-check-certificate -O /usr/local/XrayR/XrayR-linux.zip "${FIXED_URL_64}"
+            if [[ $? -ne 0 ]]; then
+                echo -e "${red}下载 XrayR ${last_version} 失败，请确保你的服务器能够下载 Github 的文件${plain}"
+                exit 1
+            fi
         fi
     fi
 
@@ -145,8 +148,8 @@ install_XrayR() {
     mkdir -p /etc/XrayR/
     rm -f /etc/systemd/system/XrayR.service
 
-    # 使用 GitLab xrayr-release 仓库中的 systemd 单元
-    file="https://gitlab.com/VergeLab/xrayr-release/-/raw/master/XrayR.service"
+    # 使用 GitHub xrayr-release 仓库中的 systemd 单元
+    file="https://raw.githubusercontent.com/Vergelab/xrayr-release/master/XrayR.service"
     wget -q -N --no-check-certificate -O /etc/systemd/system/XrayR.service ${file}
 
     systemctl daemon-reload
@@ -180,7 +183,7 @@ install_XrayR() {
     [[ ! -f /etc/XrayR/rulelist ]] && cp -f rulelist /etc/XrayR/ 2>/dev/null
 
     # 管理脚本
-    curl -o /usr/bin/XrayR -Ls https://gitlab.com/VergeLab/xrayr-release/-/raw/master/XrayR.sh
+    curl -o /usr/bin/XrayR -Ls https://raw.githubusercontent.com/Vergelab/xrayr-release/master/XrayR.sh
     chmod +x /usr/bin/XrayR
     ln -sf /usr/bin/XrayR /usr/bin/xrayr # 小写兼容
 
