@@ -1,7 +1,17 @@
-# XRayR
-A Xray backend framework that can easily support many panels.
+# XrayR
 
-一个基于Xray的后端框架，支持V2ay,Trojan,Shadowsocks协议，极易扩展，支持多面板对接
+Vergelab 的 XrayR 发布与安装仓库。
 
-Find the source code here: [XrayR-project/XrayR](https://github.com/XrayR-project/XrayR)
+## 安装
 
+```bash
+bash <(curl -Ls https://raw.githubusercontent.com/Vergelab/xrayr-release/master/install.sh)
+```
+
+安装完成后执行 `XrayR`（或 `xrayr`）打开管理菜单。
+
+项目主页：https://github.com/Vergelab/XrayR
+
+## License
+
+本仓库以 MPL-2.0 发布，衍生自 XrayR。

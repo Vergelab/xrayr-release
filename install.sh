@@ -26,7 +26,7 @@ elif cat /proc/version | grep -Eqi "ubuntu"; then
 elif cat /proc/version | grep -Eqi "centos|red hat|redhat"; then
     release="centos"
 else
-    echo -e "${red}未检测到系统版本，请联系脚本作者！${plain}\n" && exit 1
+    echo -e "${red}未检测到系统版本，请联系 Vergelab！${plain}\n" && exit 1
 fi
 
 arch=$(arch)
@@ -45,7 +45,7 @@ fi
 echo "架构: ${arch}"
 
 if [ "$(getconf WORD_BIT)" != '32' ] && [ "$(getconf LONG_BIT)" != '64' ] ; then
-    echo "本软件不支持 32 位系统(x86)，请使用 64 位系统(x86_64)，如果检测有误，请联系作者"
+    echo "本软件不支持 32 位系统(x86)，请使用 64 位系统(x86_64)，如果检测有误，请联系 Vergelab"
     exit 2
 fi
 
@@ -108,20 +108,19 @@ install_XrayR() {
     mkdir -p /usr/local/XrayR/
     cd /usr/local/XrayR/
 
-    # 固定使用你提供的可直链（避免 releases/downloads 404）
-    FIXED_URL_64="https://gitlab.com/-/project/68417262/uploads/6d7a60dba05043b73dd4ef8c15925bcb/XrayR-linux-64.zip"
+    # GitHub Release 资产：未指定版本时用 latest
+    FIXED_URL_64="https://github.com/Vergelab/xrayr-release/releases/latest/download/XrayR-linux-64.zip"
 
     if  [ $# == 0 ] ; then
-        # 仍然保留“检测最新版本”的输出，不影响原有体验
-        last_version=$(curl -sL "https://gitlab.com/VergeLab/XrayR/-/tags" | grep -oE 'v[0-9][0-9A-Za-z\.\-]+' | head -n1)
+        # 从 releases/latest 跳转解析最新 tag（避免 GitHub API 限流）
+        last_version=$(curl -fsSL -o /dev/null -w '%{url_effective}' "https://github.com/Vergelab/xrayr-release/releases/latest" | grep -oE 'v[0-9][0-9A-Za-z\.\-]+' | head -n1)
         if [[ ! -n "$last_version" ]]; then
             last_version="v0.9.4-20250101"
         fi
         echo -e "检测到 XrayR 最新版本：${last_version}，开始安装"
-        # 直接用可下载直链
         wget -q -N --no-check-certificate -O /usr/local/XrayR/XrayR-linux.zip "${FIXED_URL_64}"
         if [[ $? -ne 0 ]]; then
-            echo -e "${red}下载 XrayR 失败，请确认直链可访问${plain}"
+            echo -e "${red}下载 XrayR 失败，请确保你的服务器能够下载 Github 的文件${plain}"
             exit 1
         fi
     else
@@ -130,12 +129,20 @@ install_XrayR() {
         else
             last_version="v"$1
         fi
+        version_url="https://github.com/Vergelab/xrayr-release/releases/download/${last_version}/XrayR-linux-64.zip"
         echo -e "开始安装 XrayR ${last_version}"
-        # 仍然使用直链，保证可下到包
-        wget -q -N --no-check-certificate -O /usr/local/XrayR/XrayR-linux.zip "${FIXED_URL_64}"
+        wget -q -N --no-check-certificate -O /usr/local/XrayR/XrayR-linux.zip "${version_url}"
         if [[ $? -ne 0 ]]; then
-            echo -e "${red}下载 XrayR ${last_version} 失败，请确认直链可访问${plain}"
-            exit 1
+            echo -e "${yellow}未找到 XrayR ${last_version} 的安装包，改为下载最新版本${plain}"
+            wget -q -N --no-check-certificate -O /usr/local/XrayR/XrayR-linux.zip "${FIXED_URL_64}"
+            if [[ $? -ne 0 ]]; then
+                echo -e "${red}下载 XrayR ${last_version} 失败，请确保你的服务器能够下载 Github 的文件${plain}"
+                exit 1
+            fi
+            last_version=$(curl -fsSL -o /dev/null -w '%{url_effective}' "https://github.com/Vergelab/xrayr-release/releases/latest" | grep -oE 'v[0-9][0-9A-Za-z\.\-]+' | head -n1)
+            if [[ ! -n "$last_version" ]]; then
+                last_version="v0.9.4-20250101"
+            fi
         fi
     fi
 
@@ -145,8 +152,8 @@ install_XrayR() {
     mkdir -p /etc/XrayR/
     rm -f /etc/systemd/system/XrayR.service
 
-    # 使用 GitLab xrayr-release 仓库中的 systemd 单元
-    file="https://gitlab.com/VergeLab/xrayr-release/-/raw/master/XrayR.service"
+    # 使用 GitHub xrayr-release 仓库中的 systemd 单元
+    file="https://raw.githubusercontent.com/Vergelab/xrayr-release/master/XrayR.service"
     wget -q -N --no-check-certificate -O /etc/systemd/system/XrayR.service ${file}
 
     systemctl daemon-reload
@@ -160,16 +167,17 @@ install_XrayR() {
     if [[ ! -f /etc/XrayR/config.yml ]]; then
         cp -f config.yml /etc/XrayR/ 2>/dev/null
         echo -e ""
-        echo -e "全新安装，请先参看教程：https://github.com/XrayR-project/XrayR，配置必要的内容"
+        echo -e "全新安装，请先参看教程：https://github.com/Vergelab/XrayR，配置必要的内容"
     else
         systemctl start XrayR
         sleep 2
         check_status
+        status_rc=$?
         echo -e ""
-        if [[ $? == 0 ]]; then
+        if [[ ${status_rc} == 0 ]]; then
             echo -e "${green}XrayR 重启成功${plain}"
         else
-            echo -e "${red}XrayR 可能启动失败，请稍后使用 XrayR log 查看日志信息，若无法启动，则可能更改了配置格式，请前往 wiki 查看：https://github.com/XrayR-project/XrayR/wiki${plain}"
+            echo -e "${red}XrayR 可能启动失败，请稍后使用 XrayR log 查看日志信息，若无法启动，则可能更改了配置格式，请前往 https://github.com/Vergelab/XrayR 查看${plain}"
         fi
     fi
 
@@ -180,7 +188,7 @@ install_XrayR() {
     [[ ! -f /etc/XrayR/rulelist ]] && cp -f rulelist /etc/XrayR/ 2>/dev/null
 
     # 管理脚本
-    curl -o /usr/bin/XrayR -Ls https://gitlab.com/VergeLab/xrayr-release/-/raw/master/XrayR.sh
+    curl -o /usr/bin/XrayR -Ls https://raw.githubusercontent.com/Vergelab/xrayr-release/master/XrayR.sh
     chmod +x /usr/bin/XrayR
     ln -sf /usr/bin/XrayR /usr/bin/xrayr # 小写兼容
 
