@@ -1,3 +1,5 @@
+# 镜像 ghcr.io/vergelab/xrayr 尚未发布（仓库不存在时拉取会返回 403）。
+# 在镜像实际上线之前，Docker 方式不受支持，请使用 install.sh。
 version: '3'
 services: 
   xrayr: 
